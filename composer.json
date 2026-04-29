@@ -1,0 +1,47 @@
+{
+    "name": "abdulrehman/flarum-ext-sso",
+    "description": "SSO for Flarum",
+    "type": "flarum-extension",
+    "license": "MIT",
+    "require": {
+        "php": ">=7.3",
+        "ext-json": "*",
+        "flarum/core": "^2.0",
+        "maicol07/flarum-sso-plugin": "^3",
+        "firebase/php-jwt": "^7.0"
+    },
+    "require-dev": {
+        "roave/security-advisories": "dev-latest"
+    },
+    "autoload": {
+        "psr-4": {
+            "Abdulrehman\\SSO\\": "src/",
+            "Abdulrehman\\SSO\\Listener\\": "src/Listener",
+            "Abdulrehman\\SSO\\Middleware\\": "src/Middleware"
+        }
+    },
+    "extra": {
+        "flarum-extension": {
+            "title": "EXTERNAL SSO",
+            "category": "feature",
+            "icon": {
+                "name": "",
+                "color": "",
+                "backgroundColor": ""
+            }
+        },
+        "flarum-cli": {
+            "modules": {
+                "admin": true,
+                "githubActions": true,
+                "prettier": true,
+                "typescript": true,
+                "bundlewatch": true,
+                "styleci": true,
+                "editorConfig": true
+            }
+        }
+    },
+    "prefer-stable": true,
+    "minimum-stability": "dev"
+}
