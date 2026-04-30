@@ -23,6 +23,8 @@ use Firebase\JWT\Key;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Server\RequestHandlerInterface;
+use Laminas\Diactoros\Response\RedirectResponse;
+
 
 class JWTSSOController implements RequestHandlerInterface
 {
@@ -47,6 +49,9 @@ class JWTSSOController implements RequestHandlerInterface
     /** @var string */
     private $signer_key;
 
+    /** @var string */
+    private $cookies_prefix;
+
     /**
      * @param Dispatcher $bus
      * @param UserRepository $users
@@ -66,6 +71,7 @@ class JWTSSOController implements RequestHandlerInterface
         $this->iss = $settings->get('abdulrehman-sso.jwt_iss');
         $this->signing_algorithm = $settings->get('abdulrehman-sso.jwt_signing_algorithm') ?? 'Sha256';
         $this->signer_key = $settings->get('abdulrehman-sso.jwt_signer_key');
+        $this->cookies_prefix = $settings->get('abdulrehman-sso.cookies_prefix', 'flarum');
     }
 
     /**
@@ -79,20 +85,22 @@ class JWTSSOController implements RequestHandlerInterface
     final public function handle(Request $request): ResponseInterface
     {
         // Get token
-        $headers = $request->getHeader('Authorization');
-        if (empty($headers)) {
-            http_response_code(400);
-            throw new InvalidArgumentException("No Authorization header was set");
-        }
+        // $headers = $request->getHeader('Authorization');
+        // if (empty($headers)) {
+        //     http_response_code(400);
+        //     throw new InvalidArgumentException("No Authorization header was set");
+        // }
 
-        $header = preg_grep('/^Bearer\s[A-Za-z0-9\-_\=]+\.[A-Za-z0-9\-_\=]+\.?[A-Za-z0-9\-_.+\/\=]*$/', explode(', ', $headers[0]));
-        if (empty($header)) {
-            http_response_code(400);
-            throw new InvalidArgumentException("No JWT found in Authorization headers");
-        }
+        // $header = preg_grep('/^Bearer\s[A-Za-z0-9\-_\=]+\.[A-Za-z0-9\-_\=]+\.?[A-Za-z0-9\-_.+\/\=]*$/', explode(', ', $headers[0]));
+        // if (empty($header)) {
+        //     http_response_code(400);
+        //     throw new InvalidArgumentException("No JWT found in Authorization headers");
+        // }
+        $jwt = $request->getQueryParams()['token'];
 
-        $jwt = Str::after($header[0], 'Bearer ');
-        $signing_algorithm = null;
+
+        // $jwt = Str::after($header[0], 'Bearer ');
+        $signing_algorithm = 'Sha256';
         switch ($this->signing_algorithm) {
             case 'Sha256':
                 $signing_algorithm = 'HS256';
@@ -150,11 +158,12 @@ class JWTSSOController implements RequestHandlerInterface
         if ($user === null) {
             Arr::set($jwt_user, 'attributes.isEmailConfirmed', true);
 
-            $actor = $this->users->findOrFail(1);
-            $data = Arr::except($jwt_user, 'id');
+            // $actor = $this->users->findOrFail(1);
+            // $data = Arr::except($jwt_user, 'id');
 
             $user = new User();
-            $user->username = $username;
+            $emailPrefix = strstr($email, '@', true);
+            $user->username = $username ?? $emailPrefix;
             $user->email = $email;
             $user->is_email_confirmed = true;
 
@@ -175,10 +184,19 @@ class JWTSSOController implements RequestHandlerInterface
 
         $token = $this->getToken($user, true);
 
-        return new JsonResponse([
-            'token' => $token,
-            'userId' => $user->id
-        ]);
+        $cookieName = "{$this->cookies_prefix}_remember";
+
+        $cookie = sprintf(
+            '%s=%s; Path=/; HttpOnly; SameSite=Lax',
+            $cookieName,
+            $token
+        );
+
+        $redirectUrl = $this->site_url;
+
+        $response = new RedirectResponse($redirectUrl);
+
+        return $response->withAddedHeader('Set-Cookie', $cookie);
     }
 
     private function getToken(User $user, bool $remember = false): string
