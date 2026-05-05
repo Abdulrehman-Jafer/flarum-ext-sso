@@ -26,6 +26,17 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Laminas\Diactoros\Response\RedirectResponse;
 
 
+class JWT_METADATA
+{
+    public $is_flarum_admin = false;
+
+    public function __construct(array $data)
+    {
+        $this->is_flarum_admin = !empty($data['is_flarum_admin']);
+    }
+}
+
+
 class JWTSSOController implements RequestHandlerInterface
 {
     /** @var ConnectionInterface */
@@ -169,18 +180,18 @@ class JWTSSOController implements RequestHandlerInterface
 
             $user->save();
 
-
-            // Need to add check if the user is admin....
-            $this->database->table('group_user')->insert([
-                'user_id' => $user->id,
-                'group_id' => Group::MEMBER_ID,
-            ]);
-
             assert($user instanceof User);
         }
 
         $user->changeAvatarPath($avatar);
         $user->save();
+
+
+        $metadataArray = data_get($jwt_user, 'attributes.private_metadata', []);
+
+        $metadata = new JWT_METADATA($metadataArray);
+
+        $this->updateOrCreateUserRole($user, $metadata);
 
         $token = $this->getToken($user, true);
 
@@ -206,5 +217,38 @@ class JWTSSOController implements RequestHandlerInterface
         $token->save();
 
         return $token->token;
+    }
+
+    private function updateOrCreateUserRole(User $user, JWT_METADATA $metadata)
+    {
+        try {
+            $table = $this->database->table('group_user');
+
+            $user_group = $table->where('user_id', $user->id)->first();
+
+            $user_group_id = isset($metadata->is_flarum_admin) && $metadata->is_flarum_admin
+                ? Group::ADMINISTRATOR_ID
+                : Group::MEMBER_ID;
+
+            if ($user_group === null) {
+                $table->insert([
+                    'user_id' => $user->id,
+                    'group_id' => $user_group_id,
+                ]);
+
+                error_log("Inserted group for user ID {$user->id} with group {$user_group_id}");
+            } else {
+                $table->where('user_id', $user->id)->update([
+                    'group_id' => $user_group_id
+                ]);
+
+                error_log("Updated group for user ID {$user->id} to group {$user_group_id}");
+            }
+
+        } catch (\Exception $e) {
+            error_log("Error updating/creating user role for user ID {$user->id}: " . $e->getMessage());
+
+            throw $e;
+        }
     }
 }
